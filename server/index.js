@@ -129,8 +129,15 @@ app.get('/rtcConfig', cors({
     cb(null, allowed)
   }
 }), function (req, res) {
-  if (!iceServers) res.status(404).send({ iceServers: [] })
-  else res.send({ iceServers: iceServers })
+  res.send({
+    "iceServers": [{
+      "url": "stun:stun.l.google.com:19302"
+    }, {
+      "url": "turn:107.167.183.18:3478?transport=udp",
+      "username": "1437203078:1234",
+      "credential": "Rm/btTptWDNUPjU/yHhhFuCzddQ="
+    }]
+  })
 })
 
 app.get('*', function (req, res) {
