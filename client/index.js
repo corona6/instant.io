@@ -10,10 +10,13 @@ var thunky = require('thunky')
 var uploadElement = require('upload-element')
 var WebTorrent = require('webtorrent')
 var xhr = require('xhr')
+var qrCode = require('qrcode-npm')
 
 var util = require('./util')
 
 global.WEBTORRENT_ANNOUNCE = [ 'wss://tracker.webtorrent.io' ]
+
+var list=new Array;
 
 if (!Peer.WEBRTC_SUPPORT) {
   util.error('This browser is unsupported. Please use a browser with WebRTC support.')
@@ -55,7 +58,8 @@ dragDrop('body', onFiles)
 
 document.querySelector('form').addEventListener('submit', function (e) {
   e.preventDefault()
-  downloadInfoHash(document.querySelector('form input[name=infoHash]').value)
+  // downloadInfoHash(document.querySelector('form input[name=infoHash]').value)
+  seed(list)
 })
 
 var hash = window.location.hash.replace('#', '')
@@ -68,14 +72,41 @@ window.addEventListener('beforeunload', onBeforeUnload)
 function onFiles (files) {
   debug('got files:')
   files.forEach(function (file) {
+    list.push(file);
     debug(' - %s (%s bytes)', file.name, file.size)
+
+    if (file.type.match('image.*')) {
+      var reader = new FileReader();
+
+      // Closure to capture the file information.
+      reader.onload = (function(theFile) {
+        return function(e) {
+          // Render thumbnail.
+          // var span = document.createElement('span');
+          // span.innerHTML = ['<img class="thumb" src="', e.target.result,
+          //                   '" title="', escape(theFile.name), '"/>'].join('');
+          // document.getElementById('list').insertBefore(span, null);
+          util.error('<img src="' + e.target.result + '">');
+        };
+      })(file);
+
+      // Read in the image file as a data URL.
+      reader.readAsDataURL(file);
+    }
+
   })
 
-  // .torrent file = start downloading the torrent
-  files.filter(isTorrent).forEach(downloadTorrent)
+  util.error(list.length + '個選択中');
 
-  // everything else = seed these files
-  seed(files.filter(isNotTorrent))
+  // Only process image files.
+
+  // list.push(files);
+
+  // // .torrent file = start downloading the torrent
+  // files.filter(isTorrent).forEach(downloadTorrent)
+  //
+  // // everything else = seed these files
+  // seed(files.filter(isNotTorrent))
 }
 
 function isTorrent (file) {
@@ -124,7 +155,12 @@ function onTorrent (torrent) {
 
   var torrentFileName = path.basename(torrent.name, path.extname(torrent.name)) + '.torrent'
 
+  var qr = qrCode.qrcode(4, 'M')
+  qr.addData('/#' + torrent.infoHash)
+  qr.make()
+
   util.log(
+    qr.createImgTag(4) +
     'Torrent info hash: ' + torrent.infoHash + ' ' +
     '<a href="/#' + torrent.infoHash + '" target="_blank">[Share link]</a> ' +
     '<a href="' + torrent.magnetURI + '" target="_blank">[Magnet URI]</a> ' +

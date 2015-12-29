@@ -133,6 +133,22 @@ app.get('/rtcConfig', cors({
     "iceServers": [{
       "url": "stun:stun.l.google.com:19302"
     }, {
+      "url": "turn:global.turn.twilio.com:3478?transport=udp",
+      "credential": "mMYss/HXpJyf6EAfqZBDbwgH2gV9cB77T0HjHc679vA=",
+	    "username": "d62a8deba776171f55de07472a2fa00dc479e9e828fc48ba49c797de00a5de16"
+    }, {
+      "url": "turn:numb.viagenie.ca",
+      "credential": "muazkh",
+	    "username": "webrtc@live.com"
+    }, {
+      "url": "turn:numb.viagenie.ca:3478",
+      "credential": "Sw53sRKd",
+	    "username": "p54321ppp-a@yahoo.co.jp"
+    }, {
+      "url": "turn:stun-turn.org:3478",
+      "credential": "",
+	    "username": ""
+    }, {
       "url": "turn:107.167.183.18:3478?transport=udp",
       "username": "1437203078:1234",
       "credential": "Rm/btTptWDNUPjU/yHhhFuCzddQ="
