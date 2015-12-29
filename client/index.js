@@ -1,8 +1,6 @@
-var blobToBuffer = require('blob-to-buffer')
 var debug = require('debug')('instant.io')
 var dragDrop = require('drag-drop')
 var listify = require('listify')
-var parseTorrent = require('parse-torrent')
 var path = require('path')
 var Peer = require('simple-peer')
 var prettyBytes = require('pretty-bytes')
@@ -14,7 +12,7 @@ var qrCode = require('qrcode-npm')
 
 var util = require('./util')
 
-global.WEBTORRENT_ANNOUNCE = [ 'wss://tracker.webtorrent.io' ]
+global.WEBTORRENT_ANNOUNCE = [ 'wss://tracker.webtorrent.io', 'wss://tracker.btorrent.xyz' ]
 
 var list=new Array;
 
@@ -23,30 +21,32 @@ if (!Peer.WEBRTC_SUPPORT) {
 }
 
 var getClient = thunky(function (cb) {
-  xhr('/rtcConfig', function (err, res) {
-    var rtcConfig
-    if (err || res.statusCode !== 200) {
-      util.error('Could not get WebRTC config from server. Using default (without TURN).')
+  getRtcConfig('/rtcConfig', function (err, rtcConfig) {
+    if (err && window.location.hostname === 'instant.io') {
+      if (err) util.error(err)
+      createClient(rtcConfig)
+    } else if (err) {
+      getRtcConfig('https://instant.io/rtcConfig', function (err, rtcConfig) {
+        if (err) util.error(err)
+        createClient(rtcConfig)
+      })
     } else {
-      try {
-        rtcConfig = JSON.parse(res.body)
-      } catch (err) {
-        util.error('Got invalid WebRTC config from server: ' + res.body)
-      }
-      if (rtcConfig) debug('got rtc config: %o', rtcConfig)
+      createClient(rtcConfig)
     }
-    var client = new WebTorrent({ rtcConfig: rtcConfig })
+  })
+
+  function createClient (rtcConfig) {
+    var client = window.client = new WebTorrent({ rtcConfig: rtcConfig })
     client.on('warning', util.warning)
     client.on('error', util.error)
     cb(null, client)
-  })
+  }
 })
 
-getClient(function (err, client) {
-  if (err) return util.error(err)
-  window.client = client
-})
+// For performance, create the client immediately
+getClient(function () {})
 
+// Seed via upload input element
 var upload = document.querySelector('input[name=upload]')
 uploadElement(upload, function (err, files) {
   if (err) return util.error(err)
@@ -54,20 +54,46 @@ uploadElement(upload, function (err, files) {
   onFiles(files)
 })
 
+// Seed via drag-and-drop
 dragDrop('body', onFiles)
 
+// Download via input element
 document.querySelector('form').addEventListener('submit', function (e) {
   e.preventDefault()
   // downloadInfoHash(document.querySelector('form input[name=infoHash]').value)
   seed(list)
 })
 
-var hash = window.location.hash.replace('#', '')
-if (/^[a-f0-9]+$/i.test(hash)) {
-  downloadInfoHash(hash)
+// Download by URL hash
+onHashChange()
+window.addEventListener('hashchange', onHashChange)
+function onHashChange () {
+  var hash = decodeURIComponent(window.location.hash.substring(1)).trim()
+  if (hash !== '') downloadTorrent(hash)
 }
 
+// Warn when leaving and there are no other peers
 window.addEventListener('beforeunload', onBeforeUnload)
+
+// Register a protocol handler for "magnet:" (will prompt the user)
+navigator.registerProtocolHandler('magnet', window.location.origin + '#%s', 'Instant.io')
+
+function getRtcConfig (url, cb) {
+  xhr(url, function (err, res) {
+    if (err || res.statusCode !== 200) {
+      cb(new Error('Could not get WebRTC config from server. Using default (without TURN).'))
+    } else {
+      var rtcConfig
+      try {
+        rtcConfig = JSON.parse(res.body)
+      } catch (err) {
+        return cb(new Error('Got invalid WebRTC config from server: ' + res.body))
+      }
+      debug('got rtc config: %o', rtcConfig)
+      cb(null, rtcConfig)
+    }
+  })
+}
 
 function onFiles (files) {
   debug('got files:')
@@ -95,7 +121,7 @@ function onFiles (files) {
     }
 
   })
-
+  
   util.error(list.length + '個選択中');
 
   // Only process image files.
@@ -107,35 +133,36 @@ function onFiles (files) {
   //
   // // everything else = seed these files
   // seed(files.filter(isNotTorrent))
+
+  // .torrent file = start downloading the torrent
+  // files.filter(isTorrentFile).forEach(downloadTorrentFile)
+
+  // everything else = seed these files
+  // seed(files.filter(isNotTorrentFile))
 }
 
-function isTorrent (file) {
+function isTorrentFile (file) {
   var extname = path.extname(file.name).toLowerCase()
   return extname === '.torrent'
 }
 
-function isNotTorrent (file) {
-  return !isTorrent(file)
+function isNotTorrentFile (file) {
+  return !isTorrentFile(file)
 }
 
-function downloadInfoHash (infoHash) {
-  util.log('Downloading torrent from <strong>infohash</strong> ' + infoHash)
+function downloadTorrent (torrentId) {
+  util.log('Downloading torrent from ' + torrentId)
   getClient(function (err, client) {
     if (err) return util.error(err)
-    client.add(infoHash, onTorrent)
+    client.add(torrentId, onTorrent)
   })
 }
 
-function downloadTorrent (file) {
-  debug('downloadTorrent %s', file.name || file)
+function downloadTorrentFile (file) {
+  util.log('Downloading torrent from <strong>' + file.name + '</strong>')
   getClient(function (err, client) {
     if (err) return util.error(err)
-    util.log('Downloading torrent from <strong>file</strong> ' + file.name)
-    blobToBuffer(file, function (err, buf) {
-      if (err) return util.error(err)
-      var parsedTorrent = parseTorrent(buf)
-      client.add(parsedTorrent, onTorrent)
-    })
+    client.add(file, onTorrent)
   })
 }
 
@@ -162,13 +189,13 @@ function onTorrent (torrent) {
   util.log(
     qr.createImgTag(4) +
     'Torrent info hash: ' + torrent.infoHash + ' ' +
-    '<a href="/#' + torrent.infoHash + '" target="_blank">[Share link]</a> ' +
+    '<a href="/#' + torrent.infoHash + '" onclick="prompt(\'Share this link with anyone you want to download this torrent:\', this.href);return false;">[Share link]</a> ' +
     '<a href="' + torrent.magnetURI + '" target="_blank">[Magnet URI]</a> ' +
     '<a href="' + torrent.torrentFileURL + '" target="_blank" download="' + torrentFileName + '">[Download .torrent]</a>'
   )
 
   function updateSpeed () {
-    var progress = (100 * torrent.downloaded / torrent.parsedTorrent.length).toFixed(1)
+    var progress = (100 * torrent.progress).toFixed(1)
     util.updateSpeed(
       '<b>Peers:</b> ' + torrent.swarm.wires.length + ' ' +
       '<b>Progress:</b> ' + progress + '% ' +

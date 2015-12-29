@@ -1,6 +1,7 @@
 var compress = require('compression')
 var cors = require('cors')
 var debug = require('debug')('instant')
+var downgrade = require('downgrade')
 var express = require('express')
 var fs = require('fs')
 var http = require('http')
@@ -8,13 +9,22 @@ var https = require('https')
 var jade = require('jade')
 var parallel = require('run-parallel')
 var path = require('path')
-var url = require('url')
 var twilio = require('twilio')
+var unlimited = require('unlimited')
+var url = require('url')
 
 var config = require('../config')
-var util = require('./util')
 
-var CORS_WHITELIST = [ 'http://whiteboard.webtorrent.io' ]
+var CORS_WHITELIST = [
+  'http://instant-io.herokuapp.com',
+  'https://instant-io.herokuapp.com',
+  'http://instant.rom1504.fr',
+  'http://whiteboard.webtorrent.io',
+  'http://file.pizza',
+  'https://file.pizza',
+  'http://webtorrent.io',
+  'https://webtorrent.io'
+]
 
 var secret, secretKey, secretCert
 try {
@@ -30,7 +40,7 @@ if (secretKey && secretCert) {
   httpsServer = https.createServer({ key: secretKey, cert: secretCert }, app)
 }
 
-util.upgradeLimits()
+unlimited()
 
 // Templating
 app.set('views', path.join(__dirname, 'views'))
@@ -51,9 +61,13 @@ app.use(function (req, res, next) {
     return res.redirect('https://instant.io' + req.url)
   }
 
-  // Strict transport security (to prevent MITM attacks on the site)
+  // Use HTTP Strict Transport Security
+  // Lasts 1 year, incl. subdomains, allow browser preload list
   if (config.isProd) {
-    res.header('Strict-Transport-Security', 'max-age=31536000')
+    res.header(
+      'Strict-Transport-Security',
+      'max-age=31536000; includeSubDomains; preload'
+    )
   }
 
   // Add cross-domain header for fonts, required by spec, Firefox, and IE.
@@ -125,7 +139,8 @@ if (twilioClient) {
 app.get('/rtcConfig', cors({
   origin: function (origin, cb) {
     var allowed = CORS_WHITELIST.indexOf(origin) >= 0 ||
-      /https?:\/\/localhost(:|\/)/.test(origin)
+      /https?:\/\/localhost(:|$)/.test(origin) ||
+      /https?:\/\/[^.\/]+\.localtunnel\.me$/.test(origin)
     cb(null, allowed)
   }
 }), function (req, res) {
@@ -187,7 +202,7 @@ if (httpsServer) {
 parallel(tasks, function (err) {
   if (err) throw err
   debug('listening on port %s', JSON.stringify(config.ports))
-  util.downgradeUid()
+  downgrade()
 })
 
 function error (err) {

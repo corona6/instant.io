@@ -1,4 +1,7 @@
-# Instant.io
+# Instant.io [![travis][travis-image]][travis-url]
+
+[travis-image]: https://img.shields.io/travis/feross/instant.io.svg
+[travis-url]: https://travis-ci.org/feross/instant.io
 
 ### Streaming file transfer over WebTorrent
 
@@ -23,7 +26,7 @@ To get a clone of https://instant.io running on your own server, follow these in
 Get the code:
 
 ```
-git@github.com:feross/instant.io.git
+git clone https://github.com/feross/instant.io
 cd instant.io
 npm install
 ```
@@ -37,6 +40,7 @@ That should be it!
 ### Mirrors
 
 - http://instant.rom1504.fr/
+- https://instant-io.herokuapp.com/
 
 ## License
 
